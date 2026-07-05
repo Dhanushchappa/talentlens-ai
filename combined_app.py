@@ -7,6 +7,19 @@ import io
 from sentence_transformers import CrossEncoder
 from PIL import Image
 logo = Image.open("ml logo.png")
+TECH_SKILLS = {
+    "python","java","c","c++","javascript","typescript",
+    "html","css","react","angular","vue","node","express",
+    "django","flask","fastapi",
+    "sql","mysql","postgresql","mongodb",
+    "tensorflow","pytorch","keras","scikit-learn",
+    "machine","learning","deep","nlp","computer","vision",
+    "opencv","transformers","bert",
+    "docker","kubernetes","aws","azure","gcp",
+    "git","github",
+    "numpy","pandas","matplotlib","seaborn",
+    "power","bi","tableau"
+}
 
 
 # ================= LOAD SKILLS =================
@@ -165,16 +178,36 @@ def clean(text):
     text = re.sub(r'\s+', ' ', text)
     return text
 
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
 def extract_keywords(text):
+
     text = clean(text)
-    words = set(text.split())
 
-    # remove tiny words
-    keywords = {w for w in words if len(w) > 2}
+    words = text.split()
 
-    return keywords
+    keywords = []
 
+    for word in words:
+
+        if word in TECH_SKILLS:
+            keywords.append(word)
+
+    return set(keywords)
 def skill_match_score(resume_text, jd_text):
+
+    resume_skills = extract_keywords(resume_text)
+    jd_skills = extract_keywords(jd_text)
+
+    if len(jd_skills) == 0:
+        return 50
+
+    matched = resume_skills.intersection(jd_skills)
+
+    score = (len(matched) / len(jd_skills)) * 100
+
+    return round(score, 1)
+def keyword_match_score(resume_text, jd_text):
+
     resume_keywords = extract_keywords(resume_text)
     jd_keywords = extract_keywords(jd_text)
 
@@ -184,23 +217,18 @@ def skill_match_score(resume_text, jd_text):
     matched = resume_keywords.intersection(jd_keywords)
 
     score = (len(matched) / len(jd_keywords)) * 100
-    return round(score, 2)
 
-
-
+    return round(score, 1)
 
 import math
-def convert_to_ats(raw_score, skill_score):
-    # Semantic score from CrossEncoder (-10 to +10 → 0–100)
-    semantic_score = ((raw_score + 10) / 20) * 100
-    semantic_score = max(0, min(100, semantic_score))
+def convert_to_ats(skill_score, keyword_score):
 
-    final_score = (0.6 * semantic_score) + (0.4 * skill_score)
+    final_score = (
+        skill_score * 0.60 +
+        keyword_score * 0.40
+    )
 
-    return round(final_score, 2)
-
-
-
+    return round(final_score, 1)
 def explain_score(score):
     if score >= 90:
         return (
@@ -222,7 +250,6 @@ def explain_score(score):
             "Not Suitable",
             "The resume shows limited alignment with the job description."
         )
-
 
 # ================= SIDEBAR INPUT PANEL =================
 with st.sidebar:
@@ -285,7 +312,10 @@ if analyze:
                 resume_text = extract_pdf_text(resume_file)
             else:
                 resume_text = extract_txt_text(resume_file)
-
+            raw_score = cross_model.predict(
+                [(resume_text, job_description)]
+            )[0]
+            
             raw_score = cross_model.predict(
                 [(resume_text, job_description)]
             )[0]
@@ -295,11 +325,15 @@ if analyze:
                 job_description
             )
 
-            score = round(convert_to_ats(
-                raw_score,
-                skill_score
-            ),1)
+            keyword_score = keyword_match_score(
+                  resume_text,
+                  job_description
+            )
 
+            score = convert_to_ats(
+                skill_score,
+                keyword_score
+            )
             label, explanation = explain_score(score)
 
             results.append((
@@ -315,7 +349,9 @@ if analyze:
         best_score = round(results[0][1], 2)
         avg_score = round(sum(r[1] for r in results) / len(results), 2)
 
-        # ================= KPI CARDS =================
+
+            
+                                # ================= KPI CARDS =================
         col1, col2, col3 = st.columns(3)
 
         with col1:
